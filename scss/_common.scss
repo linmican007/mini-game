@@ -1,0 +1,279 @@
+.container {
+  padding: var(--spacing-l);
+}
+
+.btn {
+  font-size: 1.1rem;
+  background-color: var(--accent-yellow);
+  border: 3px solid var(--border-medium);
+  border-radius: var(--radius-m);
+  padding: var(--spacing-s) var(--spacing-l);
+  cursor: pointer;
+  box-shadow: var(--spacing-xs) var(--spacing-xs) 0 var(--border-medium);
+  transition: all 0.2s cubic-bezier(.4,.9,.6,1);
+  text-align: center;
+}
+
+.btn:hover {
+  background-color: #fff2e0;
+  transform: translateY(calc(-1 * var(--spacing-xs))) scale(1.02);
+  box-shadow: var(--spacing-s) var(--spacing-s) 0 var(--border-medium);
+}
+
+.game-container,
+.tamagotchi-container {
+  background: var(--bg-container);
+  border: 4px solid var(--border-light);
+  border-radius: var(--radius-m);
+  padding: var(--spacing-m) var(--spacing-l);
+  max-width: 26.25rem;
+  margin: auto;
+  box-shadow: var(--spacing-s) var(--spacing-s) 0 var(--border-medium);
+  gap: var(--spacing-l);
+  position: relative;
+  overflow: hidden;
+}
+
+// 主界面标题区域
+.title-section {
+  text-align: center;
+  margin-bottom: var(--spacing-l);
+  position: relative;
+}
+
+.title-image {
+  width: calc(100% + 2 * var(--spacing-m));
+  height: auto;
+  margin-left: calc(-1 * var(--spacing-m));
+  margin-right: calc(-1 * var(--spacing-m));
+  display: block;
+  transform: translateX(0.5rem);
+}
+
+.title-decoration {
+  display: flex;
+  justify-content: center;
+  gap: var(--spacing-m);
+  margin-top: var(--spacing-s);
+}
+
+.star {
+  display: inline-block;
+  animation: twinkle 2s ease-in-out infinite;
+  font-size: 1.2rem;
+}
+
+.star:nth-child(2) {
+  animation-delay: 0.5s;
+}
+
+.star:nth-child(3) {
+  animation-delay: 1s;
+}
+
+@keyframes twinkle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(0.9);
+  }
+}
+
+// 游戏按钮网格
+.games-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+  margin-bottom: var(--spacing-l);
+}
+
+.game-btn {
+  background-color: var(--accent-game-btn);
+  border: 3px solid var(--border-medium);
+  border-radius: var(--radius-m);
+  padding: var(--spacing-m);
+  cursor: pointer;
+  box-shadow: var(--spacing-xs) var(--spacing-xs) 0 var(--border-medium);
+  transition: all 0.3s cubic-bezier(.4,.9,.6,1);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 4.5rem;
+}
+
+.game-btn::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  right: 4px;
+  bottom: 4px;
+  border: 2px dashed var(--border-dark);
+  border-radius: calc(var(--radius-m) - 2px);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.game-btn:hover:not(.disabled) {
+  background-color: #fff2e0;
+  transform: translateY(calc(-1 * var(--spacing-xs))) scale(1.02);
+  box-shadow: var(--spacing-s) var(--spacing-s) 0 var(--border-medium);
+}
+
+.game-btn:active:not(.disabled) {
+  transform: translateY(0) scale(0.98);
+  box-shadow: var(--spacing-xs) var(--spacing-xs) 0 var(--border-medium);
+}
+
+.game-btn.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: linear-gradient(135deg, #f0f0f0 0%, #e0e0e0 100%);
+}
+
+.btn-content {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-m);
+  flex: 1;
+}
+
+.btn-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  border-radius: var(--radius-s);
+  padding: var(--spacing-xs);
+}
+
+.btn-icon svg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.btn-text-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex: 1;
+}
+
+.btn-text {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-dark);
+  text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
+  line-height: 1.2;
+}
+
+.btn-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-light);
+  line-height: 1.2;
+  margin-top: 2px;
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.btn-decoration {
+  position: absolute;
+  top: var(--spacing-xs);
+  right: var(--spacing-xs);
+}
+
+.mini-circle {
+  width: 0.9rem;
+  height: 0.9rem;
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  animation: float 3s ease-in-out infinite;
+}
+
+.mini-star {
+  font-size: 0.9rem;
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-3px) rotate(10deg);
+  }
+}
+
+// 底部装饰
+.bottom-decoration {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3rem;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.geometric-shape {
+  width: 1.5rem;
+  height: 1.5rem;
+  background: var(--accent-yellow);
+  border: 2px solid var(--border-medium);
+}
+
+.geometric-shape.circle {
+  border-radius: 50%;
+  animation: bounce 4s ease-in-out infinite;
+}
+
+.geometric-shape.square {
+  border-radius: var(--radius-s);
+  animation: bounce 4s ease-in-out infinite 1s;
+}
+
+.geometric-shape.triangle {
+  width: 0;
+  height: 0;
+  border-left: 0.75rem solid transparent;
+  border-right: 0.75rem solid transparent;
+  border-bottom: 1.3rem solid var(--accent-yellow);
+  background: transparent;
+  border-top: none;
+  animation: bounce 4s ease-in-out infinite 2s;
+}
+
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+.game-title {
+  font-size: 1.5rem;
+  color: var(--primary);
+  text-shadow: 2px 2px #fff0d6;
+  text-align: center;
+}
+
+.end-screen-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-l);
+}
