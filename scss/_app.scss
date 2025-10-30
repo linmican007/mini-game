@@ -1,0 +1,53 @@
+@use 'variables' as *;
+@use 'mixins' as *;
+
+// App 根组件样式
+.app-container {
+  width: 100%;
+  min-height: 100vh;
+  padding: var(--spacing-l);
+  box-sizing: border-box;
+}
+
+/* 移动端优化：移除根容器内边距，让卡片完全贴边 */
+@include mobile-only {
+  .app-container {
+    padding: 0 !important;
+  }
+}
+
+.pop-enter-active {
+  animation: pop-in 0.5s cubic-bezier(.2,.9,.3,1.2);
+}
+
+.pop-leave-active {
+  animation: pop-out 0.2s ease-out;
+}
+
+@keyframes pop-in {
+  from {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes pop-out {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+}
+
+/* 游戏界面响应式宽度设置 */
+.app-container .game-container,
+.app-container .tamagotchi-container {
+  @include game-container-responsive-important;
+}

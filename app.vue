@@ -1,12 +1,12 @@
 <template>
-  <div class="container mx-auto" :class="theme">
+  <div class="app-container" :class="theme">
     <transition name="pop" mode="out-in">
       <!-- 加载界面 -->
-      <div v-if="scene === 'loading'" key="loading" class="game-container">
+      <div v-if="scene === 'loading'" key="loading" class="main-container">
         <Loader ref="loaderRef" />
       </div>
       <!-- 主菜单 -->
-      <div v-else-if="scene === 'start'" key="start" class="game-container">
+      <div v-else-if="scene === 'start'" key="start" class="main-container">
         <div class="title-section">
           <img src="https://img.remit.ee/api/file/BQACAgUAAyEGAASHRsPbAAEDrUZo-Y8rK7CuT3MRrhzKBc-whRKtaAACtxcAAoqN0FduqntTYLwOuDYE.png" alt="小游戏" class="title-image" />
         </div>
@@ -138,34 +138,3 @@ onMounted(() => {
   startLoading();
 });
 </script>
-
-<style scoped>
-.pop-enter-active {
-  animation: pop-in 0.5s cubic-bezier(.2,.9,.3,1.2);
-}
-.pop-leave-active {
-  animation: pop-out 0.2s ease-out;
-}
-
-@keyframes pop-in {
-  from {
-    transform: scale(0.9);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-@keyframes pop-out {
-  from {
-    transform: scale(1);
-    opacity: 1;
-  }
-  to {
-    transform: scale(0.9);
-    opacity: 0;
-  }
-}
-</style>

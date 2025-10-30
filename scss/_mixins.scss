@@ -1,0 +1,41 @@
+@use 'variables' as *;
+
+// 响应式断点mixin
+@mixin mobile-only {
+  @media (max-width: $mobile-max) { @content; }
+}
+
+@mixin desktop-up {
+  @media (min-width: $desktop-min) { @content; }
+}
+
+// 游戏容器响应式mixin
+@mixin game-container-responsive {
+  @include mobile-only {
+    width: $mobile-container-width;
+    max-width: $mobile-container-width;
+  }
+
+  @include desktop-up {
+    width: $desktop-container-width;
+    max-width: none;
+  }
+}
+
+// 游戏容器响应式mixin（带重要声明）
+@mixin game-container-responsive-important {
+  @include mobile-only {
+    width: $mobile-container-width !important;
+    max-width: $mobile-container-width !important;
+    margin: 0 auto !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
+  }
+
+  @include desktop-up {
+    width: $desktop-container-width !important;
+    max-width: none !important;
+    margin: 0 auto !important;
+    box-sizing: border-box !important;
+  }
+}

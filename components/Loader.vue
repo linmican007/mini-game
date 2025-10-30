@@ -63,5 +63,3 @@ defineExpose({
   clearLoadingStatus
 });
 </script>
-
-<!-- 样式已移至外部 SCSS 文件 -->

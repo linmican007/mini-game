@@ -1,47 +1,57 @@
 <template>
-  <div class="rps-game-wrapper">
-    <h1 class="game-title">石头剪刀布挑战赛 </h1>
-
-    <div class="game-status-bar">
-      <div class="round-info">{{ roundInfo }}</div>
-      <div class="scores">
-        <div class="score player-score">玩家：<span>{{ playerScore }}</span></div>
-        <div class="score ai-score">方亦楷：<span>{{ aiScore }}</span></div>
+  <div class="rock-paper-scissors">
+    <!-- 顶部信息区：标题和状态 -->
+    <div class="top-section">
+      <h1 class="game-title">石头剪刀布挑战赛</h1>
+      <div class="game-status-bar">
+        <div class="round-info">{{ roundInfo }}</div>
+        <div class="scores">
+          <div class="score player-score">你：<span>{{ playerScore }}</span></div>
+          <div class="score ai-score">方亦楷：<span>{{ aiScore }}</span></div>
+        </div>
       </div>
     </div>
 
-    <div class="ai-section">
-      <img :src="aiFace" alt="方亦楷表情" class="ai-image" />
-      <div class="ai-dialogue">{{ aiDialogue }}</div>
-    </div>
-
-    <div class="match-display">
-      <div class="choice-display player">
-        <span class="choice-label">YOU</span>
-        <span class="choice-emoji" ref="playerChoiceEmojiEl">{{ playerChoiceEmoji }}</span>
+    <!-- 游戏核心区：AI和对决 -->
+    <div class="game-core-section">
+      <div class="ai-section">
+        <img :src="aiFace" alt="方亦楷表情" class="ai-image" />
+        <div class="ai-dialogue">{{ aiDialogue }}</div>
       </div>
-      <span class="vs-text">VS</span>
-      <div class="choice-display ai">
-        <span class="choice-label">KAI</span>
-        <span class="choice-emoji" ref="aiChoiceEmojiEl">{{ aiChoiceEmoji }}</span>
+
+      <div class="match-display">
+        <div class="choice-display player">
+          <span class="choice-label">YOU</span>
+          <span class="choice-emoji" ref="playerChoiceEmojiEl">{{ playerChoiceEmoji }}</span>
+        </div>
+        <span class="vs-text">VS</span>
+        <div class="choice-display ai">
+          <span class="choice-label">KAI</span>
+          <span class="choice-emoji" ref="aiChoiceEmojiEl">{{ aiChoiceEmoji }}</span>
+        </div>
       </div>
     </div>
 
-    <div class="result-display">{{ resultText }}</div>
+    <!-- 交互区：结果和按钮 -->
+    <div class="interaction-section">
+      <div class="result-display">{{ resultText }}</div>
 
-    <div class="player-choices">
-      <button class="choice-btn" @click="wrappedHandlePlayerChoice('rock')" :disabled="playerButtonsDisabled">✊</button>
-      <button class="choice-btn" @click="wrappedHandlePlayerChoice('scissors')" :disabled="playerButtonsDisabled">✌️</button>
-      <button class="choice-btn" @click="wrappedHandlePlayerChoice('paper')" :disabled="playerButtonsDisabled">🖐️</button>
+      <div class="player-choices">
+        <button class="choice-btn" @click="wrappedHandlePlayerChoice('rock')" :disabled="playerButtonsDisabled">✊</button>
+        <button class="choice-btn" @click="wrappedHandlePlayerChoice('scissors')" :disabled="playerButtonsDisabled">✌️</button>
+        <button class="choice-btn" @click="wrappedHandlePlayerChoice('paper')" :disabled="playerButtonsDisabled">🖐️</button>
+      </div>
+
+      <div class="countdown">{{ timeLeft }}</div>
     </div>
-
-    <div class="countdown">{{ timeLeft }}</div>
   </div>
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, watch } from 'vue';
+import { defineComponent, ref, onMounted, watch, onUnmounted } from 'vue';
 import { useRockPaperScissors } from '../games/rock-paper-scissors';
+import { globalTimerManager } from '../utils/timer-manager';
+import { GAME_CONFIG } from '../utils/game-config';
 
 export default defineComponent({
     name: 'RockPaperScissors',
@@ -53,15 +63,15 @@ export default defineComponent({
         const aiChoiceEmojiEl = ref<HTMLElement | null>(null);
 
         const startCountdown = () => {
-            timeLeft.value = 10;
-            if (countdownTimer) clearInterval(countdownTimer);
-            countdownTimer = setInterval(() => {
+            timeLeft.value = GAME_CONFIG.TIMING.COUNTDOWN_DURATION / 1000;
+            if (countdownTimer) globalTimerManager.clearInterval('rps-countdown');
+            globalTimerManager.setInterval('rps-countdown', () => {
                 timeLeft.value--;
                 if (timeLeft.value <= 0) {
-                    if (countdownTimer) clearInterval(countdownTimer);
-                    handlePlayerChoice('timeout'); 
+                    globalTimerManager.clearInterval('rps-countdown');
+                    handlePlayerChoice('timeout');
                 }
-            }, 1000);
+            }, GAME_CONFIG.TIMING.COUNTDOWN_INTERVAL);
         };
 
         const newStartRound = () => {
@@ -87,9 +97,14 @@ export default defineComponent({
 
         watch(gameIsOver, (isOver) => {
             if (isOver) {
-                if (countdownTimer) clearInterval(countdownTimer);
+                if (countdownTimer) globalTimerManager.clearInterval('rps-countdown');
                 emit('game-over', { playerScore: playerScore.value, aiScore: aiScore.value });
             }
+        });
+
+        // 组件卸载时清理定时器
+        onUnmounted(() => {
+            if (countdownTimer) globalTimerManager.clearInterval('rps-countdown');
         });
 
         const triggerRevealAnimation = (el: HTMLElement | null) => {
@@ -106,7 +121,7 @@ export default defineComponent({
 
         const wrappedHandlePlayerChoice = (choice: string) => {
             if (playerButtonsDisabled.value) return;
-            if (countdownTimer) clearInterval(countdownTimer);
+            if (countdownTimer) globalTimerManager.clearInterval('rps-countdown');
             handlePlayerChoice(choice);
         };
 
@@ -133,16 +148,3 @@ export default defineComponent({
     },
 });
 </script>
-
-<style scoped>
-.rps-game-wrapper {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-m); /* Use gap for consistent spacing */
-}
-
-.countdown {
-  /* Remove absolute positioning */
-  /* margin: 0; */ /* This will be handled in _rock_paper_scissors.scss */
-}
-</style>

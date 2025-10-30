@@ -1,3 +1,6 @@
+@use 'variables' as *;
+@use 'mixins' as *;
+
 // 加载界面样式
 
 // 加载界面容器直接作为内容容器
@@ -6,7 +9,7 @@
   flex-direction: column;
   align-items: center;
   gap: var(--spacing-s, 1rem);
-  width: 90%;
+  width: 100%;
   max-width: 25rem;
   padding: 1.5rem;
   margin: 0 auto;
@@ -78,6 +81,27 @@
   box-shadow: var(--spacing-xs, 0.25rem) var(--spacing-xs, 0.25rem) 0 var(--border-medium, #ccc);
   overflow: hidden;
   position: relative;
+  margin: var(--spacing-s) 0; /* 增加上下边距，加大视觉占比 */
+}
+
+/* 移动端加载界面优化 - 完全贴边 */
+@include mobile-only {
+  .loader-container {
+    width: $mobile-container-width;
+    max-width: none;
+    padding: var(--spacing-m) var(--spacing-s);
+    margin: 0 auto;
+    border-radius: var(--radius-s);
+    overflow-x: hidden;
+  }
+
+  .loading-text {
+    font-size: 1.1rem;
+  }
+
+  .loading-status {
+    font-size: 0.85rem;
+  }
 }
 
 .loading-bar {

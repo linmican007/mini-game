@@ -2,7 +2,7 @@
   <div class="tamagotchi-card" :class="theme">
     <!-- 顶部标题 -->
     <div class="header">
-      天才音乐人的饲养日常
+      某音乐人的饲养日记
       <button @click="$emit('toggle-theme')" class="theme-toggle" v-html="themeIconSvg"></button>
     </div>
 
@@ -68,8 +68,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue';
+import { ref, reactive, computed, watch, onUnmounted } from 'vue';
 import { usePetState, PetState, TIRED_DIALOGUE } from '../games/tamagotchi';
+import { globalTimerManager } from '../utils/timer-manager';
+import { GAME_CONFIG } from '../utils/game-config';
 
 const props = defineProps<{ theme: string }>();
 defineEmits(['toggle-theme']);
@@ -112,7 +114,7 @@ function typeWriter(text: string, callback?: () => void) {
     if (index < text.length) {
       displayedDialogue.value += text[index];
       index++;
-      typingTimer.value = setTimeout(typeChar, 50); // 每50ms显示一个字符
+      typingTimer.value = setTimeout(typeChar, GAME_CONFIG.TIMING.TYPEWRITER_SPEED);
     } else {
       isTyping.value = false;
       if (callback) callback();
@@ -129,10 +131,15 @@ watch(currentDialogue, (newDialogue) => {
   }
 }, { immediate: true });
 
-// 定期检查临时显示状态
-setInterval(() => {
+// 使用定时器管理器设置临时显示检查定时器
+globalTimerManager.setInterval('tamagotchi-temp-display-check', () => {
   checkTempDisplay();
-}, 1000);
+}, GAME_CONFIG.TIMING.TEMP_DISPLAY_CHECK);
+
+// 组件卸载时清理定时器
+onUnmounted(() => {
+  globalTimerManager.clearInterval('tamagotchi-temp-display-check');
+});
 
 const attributes = reactive({
   fullness: { label: '饱腹度' },
@@ -172,9 +179,9 @@ function handlePlay(item: '小吉他' | '玩游戏' | '翻花绳') {
 function handleSleep() {
   if (!sleep()) {
     isSleepButtonDisabled.value = true;
-    setTimeout(() => {
+    globalTimerManager.setTimeout('tamagotchi-sleep-button-reset', () => {
       isSleepButtonDisabled.value = false;
-    }, 2000);
+    }, GAME_CONFIG.TIMING.SLEEP_BUTTON_RESET);
   }
   backToMainActions();
 }

@@ -1,9 +1,10 @@
 import { reactive, watch, computed } from 'vue';
 import _ from 'lodash';
 
-// --- 全局单例模式 --- //
+import { globalTimerManager } from '../utils/timer-manager';
+import { SafeStorage } from '../utils/storage';
+import { GAME_CONFIG } from '../utils/game-config';
 
-// 导入文本常量
 import {
   DIALOGUES,
   TEMP_STATUS_TEXTS,
@@ -16,7 +17,6 @@ import {
   WAKE_DIALOGUE
 } from './tamagotchi-constants';
 
-// 重新导出常量供 Vue 组件使用
 export { DIALOGUES, TEMP_STATUS_TEXTS, NORMAL_DIALOGUES, NOT_SLEEPY_DIALOGUE, TIRED_DIALOGUE, NORMAL_STATUS_OPTIONS, STATUS_TEXTS, SLEEP_DIALOGUES, WAKE_DIALOGUE };
 
 // 状态结构定义
@@ -30,6 +30,7 @@ export interface PetState {
   lastInteractionTime: number; // 上次互动时间
   lastUpdated: number;   // 上次状态更新时间
   inactivityCycles: number; // 无互动周期计数
+  isFirstEntry: boolean; // 是否为首次进入游戏
   // 临时状态管理字段
   tempStatusText?: string;  // 临时状态文本
   tempDialogue?: string;    // 临时对话文本
@@ -39,8 +40,6 @@ export interface PetState {
   lastContentUpdateTime?: number; // 上次内容更新时间（对话和状态文本同步）
   currentStatusText?: string; // 当前状态文本（用于时间控制）
 }
-
-const STORAGE_KEY = 'tamagotchi_pet_state_v2';
 
 // 默认状态
 const getDefaultState = (): PetState => ({
@@ -53,39 +52,48 @@ const getDefaultState = (): PetState => ({
   lastInteractionTime: Date.now(),
   lastUpdated: Date.now(),
   inactivityCycles: 0,
+  isFirstEntry: true,
 });
 
 // 全局状态实例
 let petState: PetState;
 
 function loadState(): PetState {
-  const savedState = localStorage.getItem(STORAGE_KEY);
-  if (savedState) {
-    const state = JSON.parse(savedState);
-    return { ...getDefaultState(), ...state };
-  }
-  return getDefaultState();
+  return SafeStorage.getItem(GAME_CONFIG.STORAGE.PET_STATE_KEY, getDefaultState());
 }
 
-function saveState(state: PetState) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+function saveState(state: PetState): void {
+  SafeStorage.setItem(GAME_CONFIG.STORAGE.PET_STATE_KEY, state);
 }
 
 // 确保只在客户端执行
 if (typeof window !== 'undefined') {
   petState = reactive<PetState>(loadState());
   watch(() => petState, saveState, { deep: true });
+
+  // 使用定时器管理器设置状态更新定时器
+  globalTimerManager.setInterval('pet-state-update', updateState, GAME_CONFIG.TIMING.STATE_UPDATE_INTERVAL);
 }
 
 // 计算当前应该显示的状态文本
 function calculateCurrentStatusText(): string {
   if (petState.isSleeping) return STATUS_TEXTS.sleeping;
   // depressed状态优先级最高，心情值为0时始终优先触发
-  if (petState.happiness === 0) return _.sample(Array.isArray(STATUS_TEXTS.depressed) ? STATUS_TEXTS.depressed : [STATUS_TEXTS.depressed])!;
-  if (petState.energy < 20) return _.sample(Array.isArray(STATUS_TEXTS.energyLow) ? STATUS_TEXTS.energyLow : [STATUS_TEXTS.energyLow])!;
-  if (petState.happiness < 50) return _.sample(Array.isArray(STATUS_TEXTS.bored) ? STATUS_TEXTS.bored : [STATUS_TEXTS.bored])!;
-  if (petState.cleanliness < 50) return _.sample(Array.isArray(STATUS_TEXTS.dirty) ? STATUS_TEXTS.dirty : [STATUS_TEXTS.dirty])!;
-  if (petState.fullness < 50) return _.sample(Array.isArray(STATUS_TEXTS.hungry) ? STATUS_TEXTS.hungry : [STATUS_TEXTS.hungry])!;
+  if (petState.happiness === GAME_CONFIG.ATTRIBUTES.CRITICAL_HAPPINESS) {
+    return _.sample(Array.isArray(STATUS_TEXTS.depressed) ? STATUS_TEXTS.depressed : [STATUS_TEXTS.depressed])!;
+  }
+  if (petState.energy < GAME_CONFIG.ATTRIBUTES.LOW_ENERGY_THRESHOLD) {
+    return _.sample(Array.isArray(STATUS_TEXTS.energyLow) ? STATUS_TEXTS.energyLow : [STATUS_TEXTS.energyLow])!;
+  }
+  if (petState.happiness < GAME_CONFIG.ATTRIBUTES.LOW_ATTRIBUTE_THRESHOLD) {
+    return _.sample(Array.isArray(STATUS_TEXTS.bored) ? STATUS_TEXTS.bored : [STATUS_TEXTS.bored])!;
+  }
+  if (petState.cleanliness < GAME_CONFIG.ATTRIBUTES.LOW_ATTRIBUTE_THRESHOLD) {
+    return _.sample(Array.isArray(STATUS_TEXTS.dirty) ? STATUS_TEXTS.dirty : [STATUS_TEXTS.dirty])!;
+  }
+  if (petState.fullness < GAME_CONFIG.ATTRIBUTES.LOW_ATTRIBUTE_THRESHOLD) {
+    return _.sample(Array.isArray(STATUS_TEXTS.hungry) ? STATUS_TEXTS.hungry : [STATUS_TEXTS.hungry])!;
+  }
   return _.sample(NORMAL_STATUS_OPTIONS)!;
 }
 
@@ -130,13 +138,17 @@ function clearTempDisplay() {
 function computeNormalDialogue(): string {
   if (petState.isSleeping) return NORMAL_DIALOGUES.sleeping;
 
-  // 收集所有当前适用的负面状态
+  // 抑郁状态优先级最高，心情值为0时始终优先触发
+  if (petState.happiness === 0) {
+    return _.sample(Array.isArray(NORMAL_DIALOGUES.depressed) ? NORMAL_DIALOGUES.depressed : [NORMAL_DIALOGUES.depressed])!;
+  }
+
+  // 收集其他负面状态（排除抑郁状态）
   const negativeStates = [];
-  if (petState.fullness < 50) negativeStates.push('hungry');
-  if (petState.happiness === 0) negativeStates.push('depressed');
-  if (petState.happiness < 50 && petState.happiness !== 0) negativeStates.push('bored');
-  if (petState.energy < 20) negativeStates.push('tired');
-  if (petState.cleanliness < 50) negativeStates.push('dirty');
+  if (petState.fullness < GAME_CONFIG.ATTRIBUTES.LOW_ATTRIBUTE_THRESHOLD) negativeStates.push('hungry');
+  if (petState.happiness < GAME_CONFIG.ATTRIBUTES.LOW_ATTRIBUTE_THRESHOLD && petState.happiness !== GAME_CONFIG.ATTRIBUTES.CRITICAL_HAPPINESS) negativeStates.push('bored');
+  if (petState.energy < GAME_CONFIG.ATTRIBUTES.LOW_ENERGY_THRESHOLD) negativeStates.push('tired');
+  if (petState.cleanliness < GAME_CONFIG.ATTRIBUTES.LOW_ATTRIBUTE_THRESHOLD) negativeStates.push('dirty');
 
   // 如果有多个负面状态，随机选择一个显示
   if (negativeStates.length > 1) {
@@ -144,8 +156,6 @@ function computeNormalDialogue(): string {
     switch (randomState) {
       case 'hungry':
         return _.sample(Array.isArray(NORMAL_DIALOGUES.hungry) ? NORMAL_DIALOGUES.hungry : [NORMAL_DIALOGUES.hungry])!;
-      case 'depressed':
-        return _.sample(Array.isArray(NORMAL_DIALOGUES.depressed) ? NORMAL_DIALOGUES.depressed : [NORMAL_DIALOGUES.depressed])!;
       case 'bored':
         return _.sample(Array.isArray(NORMAL_DIALOGUES.bored) ? NORMAL_DIALOGUES.bored : [NORMAL_DIALOGUES.bored])!;
       case 'tired':
@@ -156,13 +166,17 @@ function computeNormalDialogue(): string {
   }
 
   // 如果只有一个或没有负面状态，按原有逻辑处理
-  if (petState.fullness < 50) return _.sample(Array.isArray(NORMAL_DIALOGUES.hungry) ? NORMAL_DIALOGUES.hungry : [NORMAL_DIALOGUES.hungry])!;
-  if (petState.happiness === 0) return _.sample(Array.isArray(NORMAL_DIALOGUES.depressed) ? NORMAL_DIALOGUES.depressed : [NORMAL_DIALOGUES.depressed])!;
-  if (petState.happiness < 50) return _.sample(Array.isArray(NORMAL_DIALOGUES.bored) ? NORMAL_DIALOGUES.bored : [NORMAL_DIALOGUES.bored])!;
-  if (petState.energy < 20) return NORMAL_DIALOGUES.tired;
-  if (petState.cleanliness < 50) return _.sample(Array.isArray(NORMAL_DIALOGUES.dirty) ? NORMAL_DIALOGUES.dirty : [NORMAL_DIALOGUES.dirty])!;
+  if (petState.fullness < GAME_CONFIG.ATTRIBUTES.LOW_ATTRIBUTE_THRESHOLD) {
+    return _.sample(Array.isArray(NORMAL_DIALOGUES.hungry) ? NORMAL_DIALOGUES.hungry : [NORMAL_DIALOGUES.hungry])!;
+  }
+  if (petState.happiness < GAME_CONFIG.ATTRIBUTES.LOW_ATTRIBUTE_THRESHOLD) {
+    return _.sample(Array.isArray(NORMAL_DIALOGUES.bored) ? NORMAL_DIALOGUES.bored : [NORMAL_DIALOGUES.bored])!;
+  }
+  if (petState.energy < GAME_CONFIG.ATTRIBUTES.LOW_ENERGY_THRESHOLD) return NORMAL_DIALOGUES.tired;
+  if (petState.cleanliness < GAME_CONFIG.ATTRIBUTES.LOW_ATTRIBUTE_THRESHOLD) {
+    return _.sample(Array.isArray(NORMAL_DIALOGUES.dirty) ? NORMAL_DIALOGUES.dirty : [NORMAL_DIALOGUES.dirty])!;
+  }
 
-  // normal 现在是数组，需要随机选择一个
   const normalTexts = NORMAL_DIALOGUES.normal;
   return _.sample(normalTexts)!;
 }
@@ -174,24 +188,43 @@ function updateState(forceUpdate: boolean = false) {
   const now = Date.now();
   const elapsedSeconds = (now - petState.lastUpdated) / 1000;
 
-  // 保存更新前的对话状态，用于检测是否需要更新对话
   const previousDialogue = petState.dialogue;
   const wasTempDisplay = petState.isTempDisplay;
 
   if (petState.isSleeping) {
-    petState.energy = Math.min(100, petState.energy + elapsedSeconds / 10); // 每10秒恢复1点
+    petState.energy = Math.min(
+      GAME_CONFIG.ATTRIBUTES.MAX_ATTRIBUTE_VALUE,
+      petState.energy + elapsedSeconds / GAME_CONFIG.DECAY.SLEEP_ENERGY_RATE
+    );
   } else {
-    petState.fullness = Math.max(0, petState.fullness - elapsedSeconds / 30); // 每30秒-1
-    petState.cleanliness = Math.max(0, petState.cleanliness - elapsedSeconds / 90); // 每90秒-1
-    petState.energy = Math.min(100, petState.energy + elapsedSeconds / 60); // 每60秒+1
+    petState.fullness = Math.max(
+      GAME_CONFIG.ATTRIBUTES.MIN_ATTRIBUTE_VALUE,
+      petState.fullness - elapsedSeconds / GAME_CONFIG.DECAY.FULLNESS_RATE
+    );
+    petState.cleanliness = Math.max(
+      GAME_CONFIG.ATTRIBUTES.MIN_ATTRIBUTE_VALUE,
+      petState.cleanliness - elapsedSeconds / GAME_CONFIG.DECAY.CLEANLINESS_RATE
+    );
+    petState.energy = Math.min(
+      GAME_CONFIG.ATTRIBUTES.MAX_ATTRIBUTE_VALUE,
+      petState.energy + elapsedSeconds / GAME_CONFIG.DECAY.ENERGY_RECOVERY_RATE
+    );
 
     const timeSinceLastInteraction = (now - petState.lastInteractionTime) / 1000;
-    const newCycles = Math.floor(timeSinceLastInteraction / 300);
+    const newCycles = Math.floor(timeSinceLastInteraction / GAME_CONFIG.DECAY.INACTIVITY_CYCLE);
 
     if (newCycles > petState.inactivityCycles) {
       const cyclesToApply = newCycles - petState.inactivityCycles;
-      const happinessDrop = cyclesToApply * 10;
-      petState.happiness = Math.max(0, petState.happiness - happinessDrop);
+
+      let happinessDrop = 0;
+      for (let i = 0; i < cyclesToApply; i++) {
+        const currentCycle = petState.inactivityCycles + i + 1;
+        happinessDrop += currentCycle <= GAME_CONFIG.DECAY.HAPPINESS_DROP_THRESHOLD
+          ? GAME_CONFIG.DECAY.HAPPINESS_DROP_EARLY
+          : GAME_CONFIG.DECAY.HAPPINESS_DROP_LATE;
+      }
+
+      petState.happiness = Math.max(GAME_CONFIG.ATTRIBUTES.MIN_ATTRIBUTE_VALUE, petState.happiness - happinessDrop);
       petState.inactivityCycles = newCycles;
     }
   }
@@ -199,55 +232,59 @@ function updateState(forceUpdate: boolean = false) {
 
   // 如果没有临时显示，检查是否需要更新对话文本和状态文本
   if (!petState.isTempDisplay) {
-    // 计算当前应该显示的对话文本
-    let currentNormalDialogue = '';
+    // 如果是首次进入，不更新对话，只更新状态文本
+    if (!petState.isFirstEntry) {
+      // 计算当前应该显示的对话文本
+      let currentNormalDialogue = '';
 
-    if (petState.isSleeping) {
-      currentNormalDialogue = NORMAL_DIALOGUES.sleeping;
-    } else if (petState.happiness === 0) {
-      // depressed状态优先级最高，心情值为0时始终优先触发
-      currentNormalDialogue = _.sample(Array.isArray(NORMAL_DIALOGUES.depressed) ? NORMAL_DIALOGUES.depressed : [NORMAL_DIALOGUES.depressed])!;
-    } else if (petState.energy < 20) {
-      currentNormalDialogue = NORMAL_DIALOGUES.tired;
-    } else if (petState.happiness < 50) {
-      currentNormalDialogue = _.sample(Array.isArray(NORMAL_DIALOGUES.bored) ? NORMAL_DIALOGUES.bored : [NORMAL_DIALOGUES.bored])!;
-    } else if (petState.cleanliness < 50) {
-      currentNormalDialogue = _.sample(Array.isArray(NORMAL_DIALOGUES.dirty) ? NORMAL_DIALOGUES.dirty : [NORMAL_DIALOGUES.dirty])!;
-    } else if (petState.fullness < 50) {
-      currentNormalDialogue = _.sample(Array.isArray(NORMAL_DIALOGUES.hungry) ? NORMAL_DIALOGUES.hungry : [NORMAL_DIALOGUES.hungry])!;
-    } else {
-      const normalTexts = NORMAL_DIALOGUES.normal;
-      currentNormalDialogue = Array.isArray(normalTexts) ? _.sample(normalTexts)! : normalTexts;
-    }
-
-    // 计算当前应该显示的状态文本
-    const currentStatusText = calculateCurrentStatusText();
-
-    // 检查是否需要更新内容（对话和状态文本同步）
-    const shouldUpdateDialogue = petState.dialogue !== currentNormalDialogue;
-    const shouldUpdateStatus = petState.currentStatusText !== currentStatusText;
-    const shouldUpdate = shouldUpdateDialogue || shouldUpdateStatus;
-
-    if (shouldUpdate || forceUpdate) {
-      // 如果是强制更新，或者距离上次内容更新已经超过10秒
-      const timeSinceLastContentUpdate = petState.lastContentUpdateTime
-        ? (now - petState.lastContentUpdateTime) / 1000
-        : Infinity;
-
-      if (forceUpdate || timeSinceLastContentUpdate >= 10) {
-        // 同时更新对话和状态文本，确保同步切换
-        petState.dialogue = currentNormalDialogue;
-        petState.currentStatusText = currentStatusText;
-        petState.lastContentUpdateTime = now;
+      if (petState.isSleeping) {
+        currentNormalDialogue = NORMAL_DIALOGUES.sleeping;
+      } else if (petState.happiness === GAME_CONFIG.ATTRIBUTES.CRITICAL_HAPPINESS) {
+        // depressed状态优先级最高，心情值为0时始终优先触发
+        currentNormalDialogue = _.sample(Array.isArray(NORMAL_DIALOGUES.depressed) ? NORMAL_DIALOGUES.depressed : [NORMAL_DIALOGUES.depressed])!;
+      } else if (petState.energy < GAME_CONFIG.ATTRIBUTES.LOW_ENERGY_THRESHOLD) {
+        currentNormalDialogue = NORMAL_DIALOGUES.tired;
+      } else if (petState.happiness < GAME_CONFIG.ATTRIBUTES.LOW_ATTRIBUTE_THRESHOLD) {
+        currentNormalDialogue = _.sample(Array.isArray(NORMAL_DIALOGUES.bored) ? NORMAL_DIALOGUES.bored : [NORMAL_DIALOGUES.bored])!;
+      } else if (petState.cleanliness < GAME_CONFIG.ATTRIBUTES.LOW_ATTRIBUTE_THRESHOLD) {
+        currentNormalDialogue = _.sample(Array.isArray(NORMAL_DIALOGUES.dirty) ? NORMAL_DIALOGUES.dirty : [NORMAL_DIALOGUES.dirty])!;
+      } else if (petState.fullness < GAME_CONFIG.ATTRIBUTES.LOW_ATTRIBUTE_THRESHOLD) {
+        currentNormalDialogue = _.sample(Array.isArray(NORMAL_DIALOGUES.hungry) ? NORMAL_DIALOGUES.hungry : [NORMAL_DIALOGUES.hungry])!;
+      } else {
+        const normalTexts = NORMAL_DIALOGUES.normal;
+        currentNormalDialogue = Array.isArray(normalTexts) ? _.sample(normalTexts)! : normalTexts;
       }
+
+      // 计算当前应该显示的状态文本
+      const currentStatusText = calculateCurrentStatusText();
+
+      // 检查是否需要更新内容（对话和状态文本同步）
+      const shouldUpdateDialogue = petState.dialogue !== currentNormalDialogue;
+      const shouldUpdateStatus = petState.currentStatusText !== currentStatusText;
+      const shouldUpdate = shouldUpdateDialogue || shouldUpdateStatus;
+
+      if (shouldUpdate || forceUpdate) {
+        // 如果是强制更新，或者距离上次内容更新已经超过10秒
+        const timeSinceLastContentUpdate = petState.lastContentUpdateTime
+          ? (now - petState.lastContentUpdateTime) / 1000
+          : Infinity;
+
+        if (forceUpdate || timeSinceLastContentUpdate >= GAME_CONFIG.TIMING.CONTENT_UPDATE_INTERVAL) {
+          // 同时更新对话和状态文本，确保同步切换
+          petState.dialogue = currentNormalDialogue;
+          petState.currentStatusText = currentStatusText;
+          petState.lastContentUpdateTime = now;
+        }
+      }
+    } else {
+      // 首次进入时，只更新状态文本，保持开场白不变
+      const currentStatusText = calculateCurrentStatusText();
+      petState.currentStatusText = currentStatusText;
+      petState.lastContentUpdateTime = now;
     }
   }
 }
 
-// 确保只在客户端执行
-if (typeof window !== 'undefined') {
-  setInterval(updateState, 10000); // 每10秒更新一次
-}
 
 // 导出的 Composable 函数
 export function usePetState() {
@@ -281,13 +318,17 @@ export function usePetState() {
   const normalDialogue = computed(() => {
     if (petState.isSleeping) return NORMAL_DIALOGUES.sleeping;
 
-    // 收集所有当前适用的负面状态
+    // 抑郁状态优先级最高，心情值为0时始终优先触发
+    if (petState.happiness === GAME_CONFIG.ATTRIBUTES.CRITICAL_HAPPINESS) {
+      return _.sample(Array.isArray(NORMAL_DIALOGUES.depressed) ? NORMAL_DIALOGUES.depressed : [NORMAL_DIALOGUES.depressed])!;
+    }
+
+    // 收集其他负面状态（排除抑郁状态）
     const negativeStates = [];
-    if (petState.fullness < 50) negativeStates.push('hungry');
-    if (petState.happiness === 0) negativeStates.push('depressed');
-    if (petState.happiness < 50 && petState.happiness !== 0) negativeStates.push('bored');
-    if (petState.energy < 20) negativeStates.push('tired');
-    if (petState.cleanliness < 50) negativeStates.push('dirty');
+    if (petState.fullness < GAME_CONFIG.ATTRIBUTES.LOW_ATTRIBUTE_THRESHOLD) negativeStates.push('hungry');
+    if (petState.happiness < GAME_CONFIG.ATTRIBUTES.LOW_ATTRIBUTE_THRESHOLD && petState.happiness !== 0) negativeStates.push('bored');
+    if (petState.energy < GAME_CONFIG.ATTRIBUTES.LOW_ENERGY_THRESHOLD) negativeStates.push('tired');
+    if (petState.cleanliness < GAME_CONFIG.ATTRIBUTES.LOW_ATTRIBUTE_THRESHOLD) negativeStates.push('dirty');
 
     // 如果有多个负面状态，随机选择一个显示
     if (negativeStates.length > 1) {
@@ -295,8 +336,6 @@ export function usePetState() {
       switch (randomState) {
         case 'hungry':
           return _.sample(Array.isArray(NORMAL_DIALOGUES.hungry) ? NORMAL_DIALOGUES.hungry : [NORMAL_DIALOGUES.hungry])!;
-        case 'depressed':
-          return _.sample(Array.isArray(NORMAL_DIALOGUES.depressed) ? NORMAL_DIALOGUES.depressed : [NORMAL_DIALOGUES.depressed])!;
         case 'bored':
           return _.sample(Array.isArray(NORMAL_DIALOGUES.bored) ? NORMAL_DIALOGUES.bored : [NORMAL_DIALOGUES.bored])!;
         case 'tired':
@@ -307,77 +346,56 @@ export function usePetState() {
     }
 
     // 如果只有一个或没有负面状态，按原有逻辑处理
-    if (petState.fullness < 50) return _.sample(Array.isArray(NORMAL_DIALOGUES.hungry) ? NORMAL_DIALOGUES.hungry : [NORMAL_DIALOGUES.hungry])!;
-    if (petState.happiness === 0) return _.sample(Array.isArray(NORMAL_DIALOGUES.depressed) ? NORMAL_DIALOGUES.depressed : [NORMAL_DIALOGUES.depressed])!;
-    if (petState.happiness < 50) return _.sample(Array.isArray(NORMAL_DIALOGUES.bored) ? NORMAL_DIALOGUES.bored : [NORMAL_DIALOGUES.bored])!;
-    if (petState.energy < 20) return NORMAL_DIALOGUES.tired;
-    if (petState.cleanliness < 50) return _.sample(Array.isArray(NORMAL_DIALOGUES.dirty) ? NORMAL_DIALOGUES.dirty : [NORMAL_DIALOGUES.dirty])!;
+    if (petState.fullness < GAME_CONFIG.ATTRIBUTES.LOW_ATTRIBUTE_THRESHOLD) {
+      return _.sample(Array.isArray(NORMAL_DIALOGUES.hungry) ? NORMAL_DIALOGUES.hungry : [NORMAL_DIALOGUES.hungry])!;
+    }
+    if (petState.happiness < GAME_CONFIG.ATTRIBUTES.LOW_ATTRIBUTE_THRESHOLD) {
+      return _.sample(Array.isArray(NORMAL_DIALOGUES.bored) ? NORMAL_DIALOGUES.bored : [NORMAL_DIALOGUES.bored])!;
+    }
+    if (petState.energy < GAME_CONFIG.ATTRIBUTES.LOW_ENERGY_THRESHOLD) return NORMAL_DIALOGUES.tired;
+    if (petState.cleanliness < GAME_CONFIG.ATTRIBUTES.LOW_ATTRIBUTE_THRESHOLD) {
+      return _.sample(Array.isArray(NORMAL_DIALOGUES.dirty) ? NORMAL_DIALOGUES.dirty : [NORMAL_DIALOGUES.dirty])!;
+    }
 
     // normal 现在是数组，需要随机选择一个
     const normalTexts = NORMAL_DIALOGUES.normal;
     return Array.isArray(normalTexts) ? _.sample(normalTexts)! : normalTexts;
   });
 
-  // 设置临时显示
-  function setTempDisplay(statusText?: string, dialogue?: string, autoClearDelay?: number) {
-    const startTime = Date.now();
-    petState.isTempDisplay = true;
-    petState.tempDisplayStartTime = startTime;
-    if (statusText) {
-      petState.tempStatusText = statusText;
-    }
-    if (dialogue) {
-      petState.tempDialogue = dialogue;
-    }
-
-    // 如果指定了自动清除延迟，则设置定时器
-    if (autoClearDelay && autoClearDelay > 0) {
-      setTimeout(() => {
-        // 只有当前临时显示仍然是同一个时才清除
-        if (petState.isTempDisplay && petState.tempDisplayStartTime === startTime) {
-          clearTempDisplay();
-        }
-      }, autoClearDelay);
-    }
-  }
-
-  // 清除临时显示
-  function clearTempDisplay() {
-    petState.isTempDisplay = false;
-    petState.tempStatusText = undefined;
-    petState.tempDialogue = undefined;
-    petState.tempDisplayStartTime = undefined;
-    // 恢复通常对话文本
-    petState.dialogue = normalDialogue.value;
-    // 更新内容时间戳（对话和状态文本同步）
-    petState.lastContentUpdateTime = Date.now();
-    petState.currentStatusText = calculateCurrentStatusText();
-  }
 
   // 检查并清除过期的临时显示（只用于没有自动清除延迟的情况）
   function checkTempDisplay() {
     if (petState.isTempDisplay && petState.tempDisplayStartTime) {
       const elapsed = Date.now() - petState.tempDisplayStartTime;
-      const TEMP_DISPLAY_DURATION = 8000; // 8秒后清除临时显示（作为备用）
-      if (elapsed > TEMP_DISPLAY_DURATION) {
+      if (elapsed > GAME_CONFIG.TIMING.TEMP_DISPLAY_DURATION) {
         clearTempDisplay();
       }
     }
   }
 
   // 核心交互函数
-  function handleInteraction(cost: number = 5) {
-    // 检查体力是否不足以进行互动（小于默认消耗值5）
+  function handleInteraction(cost: number = GAME_CONFIG.ATTRIBUTES.INTERACTION_COST) {
+    // 如果是首次进入，立即结束首次进入状态
+    if (petState.isFirstEntry) {
+      petState.isFirstEntry = false;
+      // 切换到正常对话
+      const normalDialogue = computeNormalDialogue();
+      petState.dialogue = normalDialogue;
+      petState.currentStatusText = calculateCurrentStatusText();
+      petState.lastContentUpdateTime = Date.now();
+    }
+
+    // 检查体力是否不足以进行互动
     if (petState.energy < cost) {
       // 使用临时显示显示疲劳对话，计算打字机时间+停顿时间
-      const typingTime = TIRED_DIALOGUE.length * 50; // 每个字符50ms
-      const pauseTime = 3000; // 3秒停顿
+      const typingTime = TIRED_DIALOGUE.length * GAME_CONFIG.TIMING.TYPEWRITER_SPEED;
+      const pauseTime = GAME_CONFIG.TIMING.AUTO_CLEAR_DELAY;
       const totalTime = typingTime + pauseTime;
       setTempDisplay(STATUS_TEXTS.tired, TIRED_DIALOGUE, totalTime);
       return false;
     }
 
-    petState.energy = Math.max(0, petState.energy - cost);
+    petState.energy = Math.max(GAME_CONFIG.ATTRIBUTES.MIN_ATTRIBUTE_VALUE, petState.energy - cost);
     petState.lastInteractionTime = Date.now();
     petState.inactivityCycles = 0;
     return true;
@@ -388,12 +406,24 @@ export function usePetState() {
 
     if (item === '一坨糊糊') {
       // 特殊效果：心情值降低3~5点，饱腹值与清洁度不变，体力值减5
-      petState.happiness = Math.max(0, petState.happiness - _.random(3, 5));
+      petState.happiness = Math.max(
+        GAME_CONFIG.ATTRIBUTES.MIN_ATTRIBUTE_VALUE,
+        petState.happiness - _.random(GAME_CONFIG.INTERACTION.BAD_FOOD_HAPPINESS_MIN, GAME_CONFIG.INTERACTION.BAD_FOOD_HAPPINESS_MAX)
+      );
     } else {
       // 正常喂食效果
-      petState.fullness = Math.min(100, petState.fullness + (item === '热汤面' ? 20 : 15));
-      petState.happiness = Math.min(100, petState.happiness + _.random(3, 5));
-      petState.cleanliness = Math.max(0, petState.cleanliness - _.random(1, 3));
+      petState.fullness = Math.min(
+        GAME_CONFIG.ATTRIBUTES.MAX_ATTRIBUTE_VALUE,
+        petState.fullness + (item === '热汤面' ? GAME_CONFIG.INTERACTION.FEED_NOODLE : GAME_CONFIG.INTERACTION.FEED_BASIC)
+      );
+      petState.happiness = Math.min(
+        GAME_CONFIG.ATTRIBUTES.MAX_ATTRIBUTE_VALUE,
+        petState.happiness + _.random(GAME_CONFIG.INTERACTION.HAPPINESS_GAIN_MIN, GAME_CONFIG.INTERACTION.HAPPINESS_GAIN_MAX)
+      );
+      petState.cleanliness = Math.max(
+        GAME_CONFIG.ATTRIBUTES.MIN_ATTRIBUTE_VALUE,
+        petState.cleanliness - _.random(GAME_CONFIG.INTERACTION.CLEAN_DIRTY_MIN, GAME_CONFIG.INTERACTION.CLEAN_DIRTY_MAX)
+      );
     }
 
     // 设置临时状态和对话，计算打字机时间+停顿时间
@@ -401,40 +431,52 @@ export function usePetState() {
       ? _.sample(TEMP_STATUS_TEXTS.feed[item])!
       : TEMP_STATUS_TEXTS.feed[item];
     const dialogue = _.sample(DIALOGUES.feed[item])!;
-    const typingTime = dialogue.length * 50; // 每个字符50ms
-    const pauseTime = 3000; // 3秒停顿
+    const typingTime = dialogue.length * GAME_CONFIG.TIMING.TYPEWRITER_SPEED;
+    const pauseTime = GAME_CONFIG.TIMING.AUTO_CLEAR_DELAY;
     const totalTime = typingTime + pauseTime;
     setTempDisplay(statusText, dialogue, totalTime);
   }
 
   function clean(item: '打扫' | '洗澡' | '梳毛') {
     if (!handleInteraction()) return;
-    petState.cleanliness = Math.min(100, petState.cleanliness + (item === '洗澡' ? 25 : (item === '梳毛' ? 10 : 15)));
-    petState.happiness = Math.min(100, petState.happiness + _.random(1, 3));
+    petState.cleanliness = Math.min(
+      GAME_CONFIG.ATTRIBUTES.MAX_ATTRIBUTE_VALUE,
+      petState.cleanliness + (item === '洗澡' ? GAME_CONFIG.INTERACTION.CLEAN_BATH : (item === '梳毛' ? GAME_CONFIG.INTERACTION.CLEAN_BRUSH : GAME_CONFIG.INTERACTION.CLEAN_BASIC))
+    );
+    petState.happiness = Math.min(
+      GAME_CONFIG.ATTRIBUTES.MAX_ATTRIBUTE_VALUE,
+      petState.happiness + _.random(GAME_CONFIG.INTERACTION.HAPPINESS_GAIN_MIN, GAME_CONFIG.INTERACTION.HAPPINESS_GAIN_MAX)
+    );
 
     // 设置临时状态和对话，计算打字机时间+停顿时间
     const statusText = Array.isArray(TEMP_STATUS_TEXTS.clean[item])
       ? _.sample(TEMP_STATUS_TEXTS.clean[item])!
       : TEMP_STATUS_TEXTS.clean[item];
     const dialogue = _.sample(DIALOGUES.clean[item])!;
-    const typingTime = dialogue.length * 50; // 每个字符50ms
-    const pauseTime = 3000; // 3秒停顿
+    const typingTime = dialogue.length * GAME_CONFIG.TIMING.TYPEWRITER_SPEED;
+    const pauseTime = GAME_CONFIG.TIMING.AUTO_CLEAR_DELAY;
     const totalTime = typingTime + pauseTime;
     setTempDisplay(statusText, dialogue, totalTime);
   }
 
   function play(item: '小吉他' | '玩游戏' | '翻花绳') {
     if (!handleInteraction()) return;
-    petState.happiness = Math.min(100, petState.happiness + _.random(5, 10));
-    petState.cleanliness = Math.max(0, petState.cleanliness - _.random(1, 3));
+    petState.happiness = Math.min(
+      GAME_CONFIG.ATTRIBUTES.MAX_ATTRIBUTE_VALUE,
+      petState.happiness + _.random(GAME_CONFIG.INTERACTION.PLAY_HAPPINESS_MIN, GAME_CONFIG.INTERACTION.PLAY_HAPPINESS_MAX)
+    );
+    petState.cleanliness = Math.max(
+      GAME_CONFIG.ATTRIBUTES.MIN_ATTRIBUTE_VALUE,
+      petState.cleanliness - _.random(GAME_CONFIG.INTERACTION.CLEAN_DIRTY_MIN, GAME_CONFIG.INTERACTION.CLEAN_DIRTY_MAX)
+    );
 
     // 设置临时状态和对话，计算打字机时间+停顿时间
     const statusText = Array.isArray(TEMP_STATUS_TEXTS.play[item])
       ? _.sample(TEMP_STATUS_TEXTS.play[item])!
       : TEMP_STATUS_TEXTS.play[item];
     const dialogue = _.sample(DIALOGUES.play[item])!;
-    const typingTime = dialogue.length * 50; // 每个字符50ms
-    const pauseTime = 3000; // 3秒停顿
+    const typingTime = dialogue.length * GAME_CONFIG.TIMING.TYPEWRITER_SPEED;
+    const pauseTime = GAME_CONFIG.TIMING.AUTO_CLEAR_DELAY;
     const totalTime = typingTime + pauseTime;
     setTempDisplay(statusText, dialogue, totalTime);
   }
@@ -446,10 +488,10 @@ export function usePetState() {
     }
 
     // 检查 notSleepy 条件：体力充足且不在睡觉状态
-    if (petState.energy >= 50 && !petState.isSleeping) {
+    if (petState.energy >= GAME_CONFIG.ATTRIBUTES.SLEEP_THRESHOLD && !petState.isSleeping) {
       // 使用临时显示显示不想睡的对话和状态文本，计算打字机时间+停顿时间
-      const typingTime = NOT_SLEEPY_DIALOGUE.length * 50; // 每个字符50ms
-      const pauseTime = 3000; // 3秒停顿
+      const typingTime = NOT_SLEEPY_DIALOGUE.length * GAME_CONFIG.TIMING.TYPEWRITER_SPEED;
+      const pauseTime = GAME_CONFIG.TIMING.AUTO_CLEAR_DELAY;
       const totalTime = typingTime + pauseTime;
       setTempDisplay(STATUS_TEXTS.notSleepy, NOT_SLEEPY_DIALOGUE, totalTime);
       // 更新互动时间但不消耗体力
@@ -462,8 +504,8 @@ export function usePetState() {
     petState.isSleeping = true;
     const sleepStatusText = TEMP_STATUS_TEXTS.sleep;
     const sleepDialogue = _.sample(SLEEP_DIALOGUES)!;
-    const typingTime = sleepDialogue.length * 50; // 每个字符50ms
-    const pauseTime = 3000; // 3秒停顿
+    const typingTime = sleepDialogue.length * GAME_CONFIG.TIMING.TYPEWRITER_SPEED;
+    const pauseTime = GAME_CONFIG.TIMING.AUTO_CLEAR_DELAY;
     const totalTime = typingTime + pauseTime;
     setTempDisplay(sleepStatusText, sleepDialogue, totalTime);
     return true;
@@ -474,12 +516,30 @@ export function usePetState() {
     // 使用临时显示显示醒来的对话和状态文本，计算打字机时间+停顿时间
     const wakeStatusText = TEMP_STATUS_TEXTS.wakeUp;
     const wakeDialogue = _.sample(WAKE_DIALOGUE)!;
-    const typingTime = wakeDialogue.length * 50; // 每个字符50ms
-    const pauseTime = 3000; // 3秒停顿
+    const typingTime = wakeDialogue.length * GAME_CONFIG.TIMING.TYPEWRITER_SPEED;
+    const pauseTime = GAME_CONFIG.TIMING.AUTO_CLEAR_DELAY;
     const totalTime = typingTime + pauseTime;
     setTempDisplay(wakeStatusText, wakeDialogue, totalTime);
     petState.lastInteractionTime = Date.now();
     petState.inactivityCycles = 0;
+  }
+
+  // 处理首次进入逻辑
+  function handleFirstEntry() {
+    if (petState.isFirstEntry) {
+      // 设置首次进入延迟后自动切换到正常对话
+      setTimeout(() => {
+        // 只有仍然是首次进入状态时才执行切换
+        if (petState.isFirstEntry) {
+          petState.isFirstEntry = false;
+          // 切换到正常对话
+          const normalDialogue = computeNormalDialogue();
+          petState.dialogue = normalDialogue;
+          petState.currentStatusText = calculateCurrentStatusText();
+          petState.lastContentUpdateTime = Date.now();
+        }
+      }, GAME_CONFIG.TIMING.FIRST_ENTRY_DELAY);
+    }
   }
 
   // 立即更新状态（用于预加载）
@@ -487,8 +547,15 @@ export function usePetState() {
     // 强制更新状态，忽略时间限制
     updateState(true);
 
-    // 确保状态文本和对话都是最新的
-    if (!petState.isTempDisplay) {
+    // 如果是首次进入，不覆盖开场白，而是启动首次进入逻辑
+    if (petState.isFirstEntry) {
+      // 确保状态文本是最新的，但保持开场白
+      petState.currentStatusText = calculateCurrentStatusText();
+      petState.lastContentUpdateTime = Date.now();
+      // 启动首次进入逻辑
+      handleFirstEntry();
+    } else if (!petState.isTempDisplay) {
+      // 非首次进入时，正常更新对话和状态文本
       petState.currentStatusText = calculateCurrentStatusText();
       petState.dialogue = computeNormalDialogue();
       petState.lastContentUpdateTime = Date.now();

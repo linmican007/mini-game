@@ -1,13 +1,32 @@
+@use 'variables' as *;
+@use 'mixins' as *;
 @import url("https://fontsapi.zeoseven.com/570/main/result.css");
 
 .tamagotchi-card {
-  font-family: "Fusion Pixel 12px M zh_hans", sans-serif;
+  font-family: "Fusion Pixel 12px M latin", sans-serif;
   font-weight: normal;
   padding: 16px;
   max-width: 400px;
   margin: 0 auto;
   border-radius: 10px;
   transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s;
+
+  /* 移动端拓麻歌子界面优化 */
+  @include mobile-only {
+    max-width: none;
+    width: $mobile-container-width;
+    padding: var(--spacing-m) var(--spacing-s);
+    margin: 0 auto;
+    border-radius: var(--radius-s);
+    overflow-x: hidden;
+  }
+
+  /* PC端拓麻歌子界面宽度设置 */
+  @include desktop-up {
+    .app-container & {
+      @include game-container-responsive-important;
+    }
+  }
 
   // --- THEMES --- //
   &.day-mode {
@@ -113,7 +132,7 @@
 
       .bar-title,
       .bar-display {
-        font-family: "Fusion Pixel 12px M zh_hans", sans-serif;
+        font-family: "Fusion Pixel 12px M latin", sans-serif;
         font-size: 12px;
         font-weight: normal;
       }

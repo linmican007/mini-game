@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue';
 import { CHOICES, CHOICE_NAMES, DIALOGUES, EXPRESSIONS, EMOJI_MAP, ROUND_RESULT_DETAILS } from './constants';
+import { GAME_CONFIG } from '../utils/game-config';
 
 const randomFrom = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
@@ -15,7 +16,7 @@ export function useRockPaperScissors({ onNextRound }: { onNextRound: () => void 
     const gameIsOver = ref(false);
     const playerButtonsDisabled = ref(false);
 
-    const roundInfo = computed(() => `第 ${roundCount.value} / 5 回合`);
+    const roundInfo = computed(() => `第 ${roundCount.value} / ${GAME_CONFIG.GAME_RULES.RPS_MAX_ROUNDS} 回合`);
 
     const judgeRound = (playerChoice: string, aiChoice: string) => {
         if (playerChoice === aiChoice) return 'draw';
@@ -56,12 +57,12 @@ export function useRockPaperScissors({ onNextRound }: { onNextRound: () => void 
             aiDialogue.value = randomFrom(DIALOGUES.result[dialogueType as keyof typeof DIALOGUES.result]);
         }
 
-        if (playerScore.value >= 3 || aiScore.value >= 3 || roundCount.value >= 5) {
+        if (playerScore.value >= GAME_CONFIG.GAME_RULES.RPS_ROUNDS_TO_WIN || aiScore.value >= GAME_CONFIG.GAME_RULES.RPS_ROUNDS_TO_WIN || roundCount.value >= GAME_CONFIG.GAME_RULES.RPS_MAX_ROUNDS) {
             setTimeout(() => {
                 gameIsOver.value = true;
-            }, 2500);
+            }, GAME_CONFIG.TIMING.ROUND_DELAY);
         } else {
-            setTimeout(onNextRound, 2500);
+            setTimeout(onNextRound, GAME_CONFIG.TIMING.ROUND_DELAY);
         }
     };
 
